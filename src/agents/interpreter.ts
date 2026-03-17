@@ -23,29 +23,145 @@ export class InterpreterAgent {
   /**
    * Main entry for processing a user's intent from a channel
    */
-  async processIntent(req: { text: string; scope: string; userId: string; lat?: number; lng?: number }) {
-    console.log(`Processing intent for scope ${req.scope}: ${req.text}`);
+  async processIntent(req: { 
+    text?: string; 
+    scope: string; 
+    userId: string; 
+    action?: "CREATE" | "READ" | "UPDATE" | "DELETE";
+    data?: Record<string, any>;
+    lat?: number; 
+    lng?: number 
+  }) {
+    console.log(`Processing ${req.action || 'intent'} for scope ${req.scope}`);
+    console.log(`Available bindings: ${Object.keys(this.env || {}).join(", ")}`);
 
-    // Step 1: Use AI to extract structured intent -> Opcode
-    const aiOutput = await this.extractIntentAi(req.text);
+    let intentData: OpcodeResult;
 
-    // Step 2: Validate the AI output using Zod
-    const parsedIntent = OpcodeOutputSchema.safeParse(aiOutput);
-    if (!parsedIntent.success) {
-      console.error("AI output failed schema validation", parsedIntent.error);
-      throw new Error("Failed to understand intent structurally");
+    if (req.action && req.data) {
+      // Step 1: Structured CRUD path (App Interface)
+      intentData = await this.executeCrud(req.action, req.data, req.scope);
+    } else if (req.text) {
+      // Step 1: Natural Language path (Chat Input)
+      const aiOutput = await this.extractIntentAi(req.text);
+
+      // Step 2: Validate the AI output using Zod
+      const parsedIntent = OpcodeOutputSchema.safeParse(aiOutput);
+      if (!parsedIntent.success) {
+        console.error("AI output failed schema validation", parsedIntent.error);
+        throw new Error("Failed to understand intent structurally");
+      }
+      intentData = parsedIntent.data;
+    } else {
+        throw new Error("Invalid request: missing text or action");
     }
-
-    const intentData = parsedIntent.data;
 
     // Step 3: Write to trace ledger
     await this.writeTrace(intentData, req);
 
     // Step 4: Update the instance (working state)
-    // Note: In a real system, we look up `stateid` via `streamid` first
-    await this.updateInstance(intentData, req.scope);
+    // For READ we might skip instance update, but for CREATE/UPDATE it logs the event
+    if (req.action !== "READ") {
+        await this.updateInstance(intentData, req.scope);
+    }
+
+    // Step 5: If it's a scheduling task (301), trigger the Durable Object Alarm
+    if (intentData.opcode === 301) {
+        await this.triggerTaskDO(intentData, req.scope);
+    }
 
     return intentData;
+  }
+
+  /**
+   * Executes structured CRUD on the state table
+   */
+  private async executeCrud(action: string, data: any, scope: string): Promise<OpcodeResult> {
+    const ucode = data.ucode || data.streamid;
+    if (!ucode) throw new Error("ucode or streamid is required for CRUD operations");
+
+    const [type] = ucode.split(':');
+    let opcode = 100; // Base Opcode for State Management
+
+    if (action === "CREATE") {
+      opcode = 101; // Map CREATE to Stock IN / Init
+      const id = crypto.randomUUID();
+      await this.db.execute({
+        sql: "INSERT INTO state (id, ucode, type, title, payload, scope) VALUES (?, ?, ?, ?, ?, ?)",
+        args: [id, ucode, type || 'unknown', data.title || null, JSON.stringify(data.payload || {}), scope]
+      });
+    } else if (action === "UPDATE") {
+      opcode = 110; // Generic Update Opcode
+      await this.db.execute({
+        sql: "UPDATE state SET title = COALESCE(?, title), payload = COALESCE(?, payload) WHERE ucode = ? AND scope = ?",
+        args: [data.title || null, data.payload ? JSON.stringify(data.payload) : null, ucode, scope]
+      });
+    } else if (action === "DELETE") {
+      opcode = 199; // Delete Opcode
+      await this.db.execute({
+        sql: "DELETE FROM state WHERE ucode = ? AND scope = ?",
+        args: [ucode, scope]
+      });
+    } else if (action === "READ") {
+      opcode = 100; // Read/Status Opcode
+      const result = await this.db.execute({
+        sql: "SELECT * FROM state WHERE ucode = ? AND scope = ?",
+        args: [ucode, scope]
+      });
+      if (result.rows.length === 0) throw new Error(`State ${ucode} not found in scope ${scope}`);
+      
+      return {
+        opcode,
+        delta: 0,
+        streamid: ucode,
+        status: "done",
+        payload: result.rows[0] as any
+      } as any;
+    }
+
+    return {
+      opcode,
+      delta: data.delta || 0,
+      streamid: ucode,
+      status: "done"
+    };
+  }
+
+  /**
+   * Triggers the Durable Object Task scheduler. 
+   * In a real OS, it would parse 'tonight at 5pm' to a timestamp. 
+   * For this demo, we'll schedule a 60-second alarm.
+   */
+  private async triggerTaskDO(data: OpcodeResult, scope: string) {
+    console.log(`Attempting to trigger TaskDO for scope: ${scope}`);
+    if (!this.env.TASK_DO) {
+        console.error("TASK_DO binding is MISSING from env. Available bindings:", Object.keys(this.env));
+        return;
+    }
+    
+    // Create a predictable DO ID for this scope/task
+    const id = this.env.TASK_DO.idFromName(scope);
+    console.log(`Durable Object ID: ${id}`);
+    const stub = this.env.TASK_DO.get(id);
+    
+    try {
+        console.log(`Sending fetch request to TaskDO stub...`);
+        // Send a 'schedule' request to the DO
+        const response = await stub.fetch("http://do/schedule", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ 
+                action: "schedule", 
+                delayMs: 60000, // 1 minute from now for testing
+                streamid: data.streamid
+            })
+        });
+        
+        const text = await response.text();
+        console.log(`TaskDO Response status: ${response.status}, text: ${text}`);
+        console.log(`TaskDO for ${scope} has been alerted to start an alarm.`);
+    } catch (err: any) {
+        console.error(`FAILED to fetch TaskDO: ${err.message}`);
+    }
   }
 
   /**

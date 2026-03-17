@@ -6,6 +6,11 @@ import { getDbClient } from './db/client';
 type Bindings = {
   TURSO_DB_URL: string;
   TURSO_DB_TOKEN: string;
+  TASK_DO: DurableObjectNamespace;
+  ORDER_DO: DurableObjectNamespace;
+  CONVERSATION_DO: DurableObjectNamespace;
+  SESSION_DO: DurableObjectNamespace;
+  AI: any;
 };
 
 const app = new Hono<{ Bindings: Bindings }>();
@@ -15,9 +20,13 @@ const ChannelRequestSchema = z.object({
   channel: z.string(),     // e.g. "telegram", "app"
   userId: z.string(),      // e.g. telegram user ID
   scope: z.string(),       // e.g. "shop:ramstore"
-  text: z.string().min(1), // The user's input/intent
+  text: z.string().optional(), // The user's input/intent (optional if action is provided)
+  action: z.enum(["CREATE", "READ", "UPDATE", "DELETE"]).optional(), // Structured CRUD
+  data: z.record(z.any()).optional(), // Structured payload for protocol
   lat: z.number().optional(),
   lng: z.number().optional()
+}).refine(data => data.text || data.action, {
+  message: "Either 'text' or 'action' must be provided"
 });
 
 app.post('/api/channel', async (c) => {
