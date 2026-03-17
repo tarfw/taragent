@@ -2,49 +2,41 @@ import { Client } from '@libsql/client';
 
 export class SearchAgent {
   private db: Client;
-  private env: any; // For AI bindings, e.g. text-embeddings
+  private env: any;
 
   constructor(db: Client, env: any) {
     this.db = db;
     this.env = env;
   }
 
-  /**
-   * Performs a semantic search against the Turso state table.
-   * Note: This requires Turso's vector search capabilities and an embedding model.
-   */
-  async searchProduct(query: string, limit: number = 5) {
-    // 1. Generate an embedding for the search query
-    console.log(`Searching for: ${query}`);
-    
-    let queryEmbedding: number[] = [];
-    if (this.env.AI) {
-      const response = await this.env.AI.run('@cf/baai/bge-base-en-v1.5', { text: [query] });
-      queryEmbedding = response.data[0];
-    } else {
-        console.warn("No AI binding found, returning mock search results.");
-        return [{ ucode: "dummy-1", title: "Dummy Apple", score: 0.99 }];
+  async processSearch(query: string, scope: string) {
+    if (!this.env.AI) {
+      throw new Error("AI binding is missing. Cannot perform semantic search.");
     }
 
-    // 2. Query Turso's state table using vector distance (requires vector extensions enabled in Turso)
-    try {
-        const result = await this.db.execute({
-            // Assuming `embedding` column is configured for vector search in Turso
-            // If using vector distance function like vector_distance_cos
-            sql: `
-              SELECT ucode, title, payload, type
-              FROM state
-              WHERE type = 'product'
-              ORDER BY vector_distance_cos(embedding, vector(?)) ASC
-              LIMIT ?
-            `,
-            args: [JSON.stringify(queryEmbedding), limit]
-        });
-        
-        return result.rows;
-    } catch (e: any) {
-        console.error("Vector search failed (ensure Turso vector extensions are enabled):", e.message);
-        throw e;
-    }
+    console.log(`Searching for "${query}" in scope ${scope}`);
+    
+    // 1. Embed the query
+    const embedResp = await this.env.AI.run('@cf/baai/bge-base-en-v1.5', { text: [query] });
+    const vec = embedResp.data[0];
+    const floatArray = Array.from(vec);
+    const embeddingStr = `[${floatArray.join(',')}]`;
+
+    // 2. Perform vector search in Turso
+    // vector_distance_cos returns similarity distance (lower is closer matching)
+    const result = await this.db.execute({
+      sql: `SELECT ucode, title, payload, vector_distance_cos(embedding, vector(?)) as distance
+            FROM state 
+            WHERE scope = ? AND embedding IS NOT NULL
+            ORDER BY distance ASC
+            LIMIT 5`,
+      args: [embeddingStr, scope]
+    });
+
+    return {
+      action: "SEARCH",
+      query,
+      results: result.rows
+    };
   }
 }

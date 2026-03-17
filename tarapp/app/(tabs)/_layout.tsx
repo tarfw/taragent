@@ -7,27 +7,35 @@ import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 
 export default function TabLayout() {
-  const colorScheme = useColorScheme();
+  const colorScheme = 'light'; // Forced light theme per user request
 
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
+        tabBarActiveTintColor: Colors.light.tint,
         headerShown: false,
         tabBarButton: HapticTab,
+        tabBarLabelStyle: { fontWeight: '600' },
       }}>
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Home',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="house.fill" color={color} />,
+          title: 'Trace',
+          tabBarIcon: ({ color }) => <IconSymbol size={28} name="waveform.path.ecg" color={color} />,
         }}
       />
       <Tabs.Screen
-        name="explore"
+        name="agents"
         options={{
-          title: 'Explore',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="paperplane.fill" color={color} />,
+          title: 'Agents',
+          tabBarIcon: ({ color }) => <IconSymbol size={28} name="cpu" color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="relay"
+        options={{
+          title: 'Relay',
+          tabBarIcon: ({ color }) => <IconSymbol size={28} name="link" color={color} />,
         }}
       />
     </Tabs>

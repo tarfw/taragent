@@ -1,14 +1,14 @@
 import { StyleSheet } from 'react-native';
 import { ThemedView } from '@/components/themed-view';
-import LiveTracking from '../../src/screens/LiveTracking';
+import RelayScreen from '../../src/screens/RelayScreen';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-export default function TraceScreen() {
+export default function RelayTab() {
   const insets = useSafeAreaInsets();
   
   return (
     <ThemedView style={[styles.container, { paddingTop: insets.top }]}>
-      <LiveTracking />
+      <RelayScreen />
     </ThemedView>
   );
 }

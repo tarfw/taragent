@@ -27,7 +27,7 @@ export class InterpreterAgent {
     text?: string; 
     scope: string; 
     userId: string; 
-    action?: "CREATE" | "READ" | "UPDATE" | "DELETE";
+    action?: "CREATE" | "READ" | "UPDATE" | "DELETE" | "SEARCH";
     data?: Record<string, any>;
     lat?: number; 
     lng?: number 
@@ -64,7 +64,13 @@ export class InterpreterAgent {
         await this.updateInstance(intentData, req.scope);
     }
 
-    // Step 5: If it's a scheduling task (301), trigger the Durable Object Alarm
+    // Step 5: Broadcast Live Events
+    const broadcastOpcodes = [101, 102, 103, 110];
+    if (broadcastOpcodes.includes(intentData.opcode)) {
+        await this.triggerLiveBroadcast(intentData, req.scope);
+    }
+
+    // Step 6: If it's a scheduling task (301), trigger the Durable Object Alarm
     if (intentData.opcode === 301) {
         await this.triggerTaskDO(intentData, req.scope);
     }
@@ -82,19 +88,47 @@ export class InterpreterAgent {
     const [type] = ucode.split(':');
     let opcode = 100; // Base Opcode for State Management
 
+    // Generate Embedding if applicable
+    let embeddingStr = null;
+    if ((action === "CREATE" || action === "UPDATE") && this.env.AI && (data.title || data.payload)) {
+      const textToEmbed = `${data.title || ''} ${JSON.stringify(data.payload || {})}`.trim();
+      try {
+        const embedResp = await this.env.AI.run('@cf/baai/bge-base-en-v1.5', { text: [textToEmbed] });
+        const vec = embedResp.data[0];
+        const floatArray = Array.from(vec);
+        embeddingStr = `[${floatArray.join(',')}]`;
+      } catch(e) {
+        console.warn("Embedding generation failed", e);
+      }
+    }
+
     if (action === "CREATE") {
       opcode = 101; // Map CREATE to Stock IN / Init
       const id = crypto.randomUUID();
-      await this.db.execute({
-        sql: "INSERT INTO state (id, ucode, type, title, payload, scope) VALUES (?, ?, ?, ?, ?, ?)",
-        args: [id, ucode, type || 'unknown', data.title || null, JSON.stringify(data.payload || {}), scope]
-      });
+      if (embeddingStr) {
+        await this.db.execute({
+          sql: "INSERT INTO state (id, ucode, type, title, payload, scope, embedding) VALUES (?, ?, ?, ?, ?, ?, vector(?))",
+          args: [id, ucode, type || 'unknown', data.title || null, JSON.stringify(data.payload || {}), scope, embeddingStr]
+        });
+      } else {
+        await this.db.execute({
+          sql: "INSERT INTO state (id, ucode, type, title, payload, scope) VALUES (?, ?, ?, ?, ?, ?)",
+          args: [id, ucode, type || 'unknown', data.title || null, JSON.stringify(data.payload || {}), scope]
+        });
+      }
     } else if (action === "UPDATE") {
       opcode = 110; // Generic Update Opcode
-      await this.db.execute({
-        sql: "UPDATE state SET title = COALESCE(?, title), payload = COALESCE(?, payload) WHERE ucode = ? AND scope = ?",
-        args: [data.title || null, data.payload ? JSON.stringify(data.payload) : null, ucode, scope]
-      });
+      if (embeddingStr) {
+        await this.db.execute({
+          sql: "UPDATE state SET title = COALESCE(?, title), payload = COALESCE(?, payload), embedding = vector(?) WHERE ucode = ? AND scope = ?",
+          args: [data.title || null, data.payload ? JSON.stringify(data.payload) : null, embeddingStr, ucode, scope]
+        });
+      } else {
+        await this.db.execute({
+          sql: "UPDATE state SET title = COALESCE(?, title), payload = COALESCE(?, payload) WHERE ucode = ? AND scope = ?",
+          args: [data.title || null, data.payload ? JSON.stringify(data.payload) : null, ucode, scope]
+        });
+      }
     } else if (action === "DELETE") {
       opcode = 199; // Delete Opcode
       await this.db.execute({
@@ -161,6 +195,26 @@ export class InterpreterAgent {
         console.log(`TaskDO for ${scope} has been alerted to start an alarm.`);
     } catch (err: any) {
         console.error(`FAILED to fetch TaskDO: ${err.message}`);
+    }
+  }
+
+  /**
+   * Broadcasts the event to all active WebSocket clients via the OrderDO
+   */
+  private async triggerLiveBroadcast(data: OpcodeResult, scope: string) {
+    console.log(`Broadcasting live event to OrderDO for scope: ${scope}`);
+    if (!this.env.ORDER_DO) return;
+    
+    const id = this.env.ORDER_DO.idFromName(scope);
+    const stub = this.env.ORDER_DO.get(id);
+    
+    try {
+        await stub.fetch("http://do/broadcast", {
+            method: "POST",
+            body: JSON.stringify(data)
+        });
+    } catch (err: any) {
+        console.error(`FAILED to broadcast to OrderDO: ${err.message}`);
     }
   }
 
