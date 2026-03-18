@@ -19,7 +19,7 @@ import { useAgentState } from '@/hooks/useAgentState';
 export function CustomTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
   const isAgentsTab = state.routes[state.index]?.name === 'agents';
-  const keyboardVisible = useKeyboard();
+  const { visible: keyboardVisible } = useKeyboard();
   const { loading, setLoading, setResult } = useAgentState();
 
   const [query, setQuery] = useState('');
@@ -68,12 +68,11 @@ export function CustomTabBar({ state, descriptors, navigation }: BottomTabBarPro
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      style={styles.kavWrapper}
-      keyboardVerticalOffset={0}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
     >
       <View style={[
         styles.wrapper,
-        { paddingBottom: keyboardVisible ? 4 : Math.max(insets.bottom, 8) },
+        { paddingBottom: keyboardVisible ? 0 : Math.max(insets.bottom, 8) },
       ]}>
         {isAgentsTab && (
           <View style={styles.inputContainer}>
@@ -145,15 +144,11 @@ export function CustomTabBar({ state, descriptors, navigation }: BottomTabBarPro
 }
 
 const styles = StyleSheet.create({
-  kavWrapper: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-  },
   wrapper: {
     alignItems: 'center',
     paddingHorizontal: 16,
+    backgroundColor: '#FFF',
+    paddingTop: 10,
   },
   barContainer: {
     width: '100%',
@@ -177,7 +172,7 @@ const styles = StyleSheet.create({
   },
   inputContainer: {
     width: '100%',
-    marginBottom: 8,
+    marginBottom: 12,
     backgroundColor: '#FFF',
     borderRadius: 16,
     borderWidth: StyleSheet.hairlineWidth,
@@ -191,6 +186,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#1C1C1E',
     letterSpacing: -0.5,
+    minHeight: 72,
     maxHeight: 120,
     padding: 0,
   },

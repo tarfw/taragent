@@ -116,6 +116,15 @@ export class InterpreterAgent {
           args: [id, ucode, type || 'unknown', data.title || null, JSON.stringify(data.payload || {}), scope]
         });
       }
+      return {
+        opcode: 101,
+        delta: data.delta || 0,
+        streamid: ucode,
+        ucode: ucode,
+        title: data.title || null,
+        payload: data.payload || {},
+        status: "done"
+      } as any;
     } else if (action === "UPDATE") {
       opcode = 110; // Generic Update Opcode
       if (embeddingStr) {
@@ -129,6 +138,15 @@ export class InterpreterAgent {
           args: [data.title || null, data.payload ? JSON.stringify(data.payload) : null, ucode, scope]
         });
       }
+      return {
+        opcode: 110,
+        delta: data.delta || 0,
+        streamid: ucode,
+        ucode: ucode,
+        title: data.title || null,
+        payload: data.payload || {},
+        status: "done"
+      } as any;
     } else if (action === "DELETE") {
       opcode = 199; // Delete Opcode
       await this.db.execute({
@@ -156,8 +174,9 @@ export class InterpreterAgent {
       opcode,
       delta: data.delta || 0,
       streamid: ucode,
+      ucode: ucode,
       status: "done"
-    };
+    } as any;
   }
 
   /**
