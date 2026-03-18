@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import {
   View,
   Text,
@@ -6,66 +6,18 @@ import {
   ActivityIndicator,
   ScrollView,
   Platform,
-  TouchableOpacity,
-  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAgentState } from '@/hooks/useAgentState';
-import { StateTypePickerModal } from '@/components/StateTypePickerModal';
-import { StateFormModal } from '@/components/StateFormModal';
-import { StateTypeDef, getStateType } from '../config/stateSchemas';
+import { getStateType } from '../config/stateSchemas';
+import { useLiveEvents } from '@/hooks/useLiveEvents';
 
 export default function AgentsScreen() {
-  const { loading, result, createState, updateState, deleteState } = useAgentState();
+  const { loading, result } = useAgentState();
+  const { events: traces } = useLiveEvents();
 
-  const [showTypePicker, setShowTypePicker] = useState(false);
-  const [showForm, setShowForm] = useState(false);
-  const [selectedType, setSelectedType] = useState<StateTypeDef | null>(null);
-  const [editingState, setEditingState] = useState<any>(null);
-
-  // Step 1: Open type picker
-  const handlePressAdd = () => {
-    setEditingState(null);
-    setShowTypePicker(true);
-  };
-
-  // Step 2: Type selected → open form
-  const handleTypeSelect = (type: StateTypeDef) => {
-    setSelectedType(type);
-    setShowTypePicker(false);
-    setShowForm(true);
-  };
-
-  // Edit: resolve type from ucode prefix, open form
-  const handleEdit = (item: any) => {
-    const typeKey = item.ucode?.split(':')[0];
-    const typeDef = getStateType(typeKey);
-    if (!typeDef) {
-      Alert.alert('Unknown type', `Cannot edit type: ${typeKey}`);
-      return;
-    }
-    setSelectedType(typeDef);
-    setEditingState({
-      ...item,
-      payload: typeof item.payload === 'string' ? JSON.parse(item.payload) : item.payload,
-    });
-    setShowForm(true);
-  };
-
-  const handleDelete = (ucode: string) => {
-    Alert.alert('Delete State', `Delete "${ucode}"?`, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: () => deleteState(ucode) },
-    ]);
-  };
-
-  const handleSubmit = async (ucode: string, title: string, payload: Record<string, any>) => {
-    if (editingState) {
-      await updateState(ucode, title, payload);
-    } else {
-      await createState(ucode, title, payload);
-    }
-  };
+  // Agents screen: semantic search and AI inputs only.
+  // State management is handled in the Memories tab.
 
   const renderResults = () => {
     if (!result) return null;
@@ -76,16 +28,12 @@ export default function AgentsScreen() {
     if (result.result?.action === "SEARCH" && Array.isArray(result.result.results)) {
       // It's a semantic search result
       items = result.result.results;
-    } else if (Array.isArray(result.result)) {
-      // It's a direct array result
-      items = result.result;
-    } else if (result.result) {
-      // It's a single object result (e.g. from CREATE/UPDATE)
-      items = [result.result];
-    }
+    } 
+    // Manual CRUD results and direct array results are no longer displayed here
+    // to keep the agents screen focused on search/AI.
 
     if (items.length === 0) {
-      // No items found or success but empty
+      // Only show "no results" for explicit SEARCH. All other actions (CRUD from Memories) = silent.
       if (result.success && result.result?.action === "SEARCH") {
          return (
             <View style={styles.empty}>
@@ -93,11 +41,7 @@ export default function AgentsScreen() {
             </View>
          );
       }
-      return (
-        <View style={styles.resultRaw}>
-          <Text style={styles.resultJson}>{JSON.stringify(result, null, 2)}</Text>
-        </View>
-      );
+      return null; // CRUD results from Memories tab — don't render anything here
     }
 
     return (
@@ -107,7 +51,7 @@ export default function AgentsScreen() {
           const ucode = item.ucode || item.streamid;
           const typeKey = ucode?.split(':')[0];
           const typeDef = getStateType(typeKey);
-          
+
           return (
             <View key={i} style={styles.card}>
               <View style={styles.cardTop}>
@@ -119,14 +63,7 @@ export default function AgentsScreen() {
                     </Text>
                   </View>
                 )}
-                <View style={styles.cardActions}>
-                  <TouchableOpacity onPress={() => handleEdit({ ...item, ucode })} style={styles.actionBtn}>
-                    <Ionicons name="pencil-outline" size={18} color="#007AFF" />
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={() => handleDelete(ucode)} style={styles.actionBtn}>
-                    <Ionicons name="trash-outline" size={18} color="#FF3B30" />
-                  </TouchableOpacity>
-                </View>
+                <Ionicons name="arrow-forward-outline" size={16} color="#C7C7CC" />
               </View>
               <Text style={styles.cardTitle}>{item.title || '—'}</Text>
               <Text style={styles.cardUcode}>{ucode}</Text>
@@ -152,9 +89,6 @@ export default function AgentsScreen() {
       >
         <View style={styles.headerRow}>
           <Text style={styles.headerTitle}>Agents</Text>
-          <TouchableOpacity style={styles.addBtn} onPress={handlePressAdd}>
-            <Ionicons name="add" size={24} color="#000" />
-          </TouchableOpacity>
         </View>
 
         {!result && !loading && (
@@ -172,26 +106,23 @@ export default function AgentsScreen() {
         )}
 
         {renderResults()}
+
+        {traces.length > 0 && (
+          <View style={styles.traceSection}>
+             <View style={styles.traceHeader}>
+              <Ionicons name="flash" size={16} color="#FF9500" />
+              <Text style={styles.traceTitle}>Live Traces</Text>
+             </View>
+             {traces.slice(0, 5).map((trace, i) => (
+               <View key={i} style={styles.traceItem}>
+                 <Text style={styles.traceId}>{trace.streamid}</Text>
+                 <Text style={styles.traceStatus}>{trace.status}</Text>
+                 <Text style={styles.traceTime}>{trace.timestamp}</Text>
+               </View>
+             ))}
+          </View>
+        )}
       </ScrollView>
-
-      {/* Step 1 — Type Picker */}
-      <StateTypePickerModal
-        visible={showTypePicker}
-        onClose={() => setShowTypePicker(false)}
-        onSelect={handleTypeSelect}
-      />
-
-      {/* Step 2 — Type Form */}
-      <StateFormModal
-        visible={showForm}
-        stateType={selectedType}
-        existingState={editingState}
-        onClose={() => {
-          setShowForm(false);
-          setEditingState(null);
-        }}
-        onSubmit={handleSubmit}
-      />
     </View>
   );
 }
@@ -210,14 +141,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#1C1C1E',
     letterSpacing: -0.5,
-  },
-  addBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#F2F2F7',
-    justifyContent: 'center',
-    alignItems: 'center',
   },
   empty: { marginTop: '30%', alignItems: 'center' },
   emptyText: { fontSize: 16, fontWeight: '500', color: '#8E8E93' },
@@ -263,4 +186,33 @@ const styles = StyleSheet.create({
   cardTitle: { fontSize: 18, fontWeight: '700', color: '#1C1C1E', marginBottom: 2 },
   cardUcode: { fontSize: 12, color: '#AEAEB2', marginBottom: 6 },
   cardPayload: { fontSize: 13, color: '#8E8E93', lineHeight: 18 },
+  traceSection: {
+    marginTop: 32,
+    backgroundColor: '#F2F2F7',
+    borderRadius: 16,
+    padding: 16,
+  },
+  traceHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 12,
+  },
+  traceTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#8E8E93',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  traceItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#D1D1D6',
+  },
+  traceId: { fontSize: 13, fontWeight: '600', color: '#1C1C1E', flex: 1 },
+  traceStatus: { fontSize: 12, color: '#34C759', marginRight: 10 },
+  traceTime: { fontSize: 11, color: '#AEAEB2' },
 });

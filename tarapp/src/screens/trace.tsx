@@ -1,76 +1,29 @@
-import React, { useEffect, useState, useRef } from 'react';
-import { View, Text, StyleSheet, ScrollView, Animated, Platform } from 'react-native';
+import React, { useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, ScrollView, Animated } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-
-const LIVE_WS_URL = "wss://taragent.wetarteam.workers.dev/api/live/shop:main";
-
-interface LiveEvent {
-  opcode: number;
-  delta: number;
-  streamid: string;
-  status: string;
-  timestamp: string;
-}
+import { useLiveEvents } from '@/hooks/useLiveEvents';
 
 export default function LiveTracking() {
-  const [events, setEvents] = useState<LiveEvent[]>([]);
-  const [status, setStatus] = useState('Connecting...');
-  const ws = useRef<WebSocket | null>(null);
+  const { events, status } = useLiveEvents();
 
   // Animation value for the pulsing live dot
   const pulseAnim = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
-    connectWebSocket();
     startPulse();
-    return () => {
-      if (ws.current) ws.current.close();
-    };
   }, []);
 
   const startPulse = () => {
     Animated.loop(
       Animated.sequence([
         Animated.timing(pulseAnim, { toValue: 0.4, duration: 800, useNativeDriver: true }),
-        Animated.timing(pulseAnim, { toValue: 1, duration: 800, useNativeDriver: true })
+        Animated.timing(pulseAnim, { toValue: 1, duration: 800, useNativeDriver: true }),
       ])
     ).start();
   };
 
-  const connectWebSocket = () => {
-    setStatus('Connecting...');
-    ws.current = new WebSocket(LIVE_WS_URL);
-
-    ws.current.onopen = () => {
-      setStatus('Connected');
-    };
-
-    ws.current.onmessage = (e) => {
-      try {
-        const data = JSON.parse(e.data);
-        const newEvent: LiveEvent = {
-          ...data,
-          timestamp: new Date().toLocaleTimeString(),
-        };
-        
-        setEvents((prev) => [newEvent, ...prev].slice(0, 50));
-      } catch (err) {
-        console.error("Failed to parse live event", err);
-      }
-    };
-
-    ws.current.onerror = (e) => {
-      setStatus('Error');
-    };
-
-    ws.current.onclose = () => {
-      setStatus('Reconnecting...');
-      setTimeout(connectWebSocket, 3000);
-    };
-  };
-
   const renderIconForOpcode = (opcode: number) => {
-    switch(opcode) {
+    switch (opcode) {
       case 102: return <Ionicons name="cart" size={24} color="#FF3B30" />;
       case 103: return <Ionicons name="bicycle" size={24} color="#007AFF" />;
       case 101: return <Ionicons name="download" size={24} color="#34C759" />;
@@ -79,7 +32,7 @@ export default function LiveTracking() {
   };
 
   const renderTextForOpcode = (opcode: number) => {
-    switch(opcode) {
+    switch (opcode) {
       case 102: return 'STOCK OUT (SALE)';
       case 103: return 'DRIVER UPDATE';
       case 101: return 'STOCK IN';
@@ -93,14 +46,14 @@ export default function LiveTracking() {
         <View style={styles.headerContent}>
           <Text style={styles.title}>Trace</Text>
           <View style={styles.statusBadge}>
-            <Animated.View 
+            <Animated.View
               style={[
-                styles.statusDot, 
-                { 
+                styles.statusDot,
+                {
                   backgroundColor: status === 'Connected' ? '#34C759' : '#FF3B30',
-                  opacity: status === 'Connected' ? pulseAnim : 1
-                }
-              ]} 
+                  opacity: status === 'Connected' ? pulseAnim : 1,
+                },
+              ]}
             />
             <Text style={styles.statusText}>{status}</Text>
           </View>
@@ -113,14 +66,14 @@ export default function LiveTracking() {
           <View style={styles.emptyContainer}>
             <Ionicons name="radio-outline" size={64} color="#C7C7CC" />
             <Text style={styles.emptyText}>Waiting for live events...</Text>
-            <Text style={styles.emptySubText}>Create a sale or driver update to see it here instantly.</Text>
+            <Text style={styles.emptySubText}>
+              Activity from your commerce agent will appear here instantly.
+            </Text>
           </View>
         ) : (
           events.map((ev, index) => (
             <View key={index} style={styles.card}>
-              <View style={styles.cardIconBox}>
-                {renderIconForOpcode(ev.opcode)}
-              </View>
+              <View style={styles.cardIconBox}>{renderIconForOpcode(ev.opcode)}</View>
               <View style={styles.cardContent}>
                 <View style={styles.cardHeader}>
                   <Text style={styles.streamId}>{ev.streamid}</Text>
@@ -128,11 +81,14 @@ export default function LiveTracking() {
                 </View>
                 <View style={styles.cardBody}>
                   <Text style={styles.opcodeText}>{renderTextForOpcode(ev.opcode)}</Text>
-                  <Text style={[
-                      styles.delta, 
-                      { color: ev.delta < 0 ? '#FF3B30' : (ev.delta > 0 ? '#34C759' : '#8E8E93') }
-                    ]}>
-                    {ev.delta > 0 ? '+' : ''}{ev.delta} units
+                  <Text
+                    style={[
+                      styles.delta,
+                      { color: ev.delta < 0 ? '#FF3B30' : ev.delta > 0 ? '#34C759' : '#8E8E93' },
+                    ]}
+                  >
+                    {ev.delta > 0 ? '+' : ''}
+                    {ev.delta} units
                   </Text>
                 </View>
               </View>
@@ -145,10 +101,7 @@ export default function LiveTracking() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#FFFFFF',
-  },
+  container: { flex: 1, backgroundColor: '#FFFFFF' },
   header: {
     paddingHorizontal: 20,
     paddingTop: 20,
@@ -170,10 +123,7 @@ const styles = StyleSheet.create({
     color: '#1C1C1E',
     letterSpacing: -0.5,
   },
-  subtitle: {
-    fontSize: 14,
-    color: '#8E8E93',
-  },
+  subtitle: { fontSize: 14, color: '#8E8E93' },
   statusBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -188,15 +138,8 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     marginRight: 6,
   },
-  statusText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#3A3A3C',
-  },
-  list: {
-    padding: 16,
-    flexGrow: 1,
-  },
+  statusText: { fontSize: 12, fontWeight: '600', color: '#3A3A3C' },
+  list: { padding: 16, flexGrow: 1 },
   emptyContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -235,24 +178,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginRight: 16,
   },
-  cardContent: {
-    flex: 1,
-  },
+  cardContent: { flex: 1 },
   cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginBottom: 4,
   },
-  streamId: {
-    fontWeight: '700',
-    fontSize: 16,
-    color: '#1C1C1E',
-  },
-  time: {
-    fontSize: 12,
-    color: '#8E8E93',
-    fontWeight: '500',
-  },
+  streamId: { fontWeight: '700', fontSize: 16, color: '#1C1C1E' },
+  time: { fontSize: 12, color: '#8E8E93', fontWeight: '500' },
   cardBody: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -264,8 +197,5 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     letterSpacing: 0.5,
   },
-  delta: {
-    fontSize: 16,
-    fontWeight: '800',
-  }
+  delta: { fontSize: 16, fontWeight: '800' },
 });

@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState } from "react";
+import { createStateApi, updateStateApi, deleteStateApi } from "../src/api/client";
 
 type AgentState = {
   loading: boolean;
@@ -20,25 +21,17 @@ const AgentContext = createContext<AgentState>({
   deleteState: async () => {},
 });
 
-import { sendCommerceAction } from "../src/api/client";
+const SCOPE = "shop:main";
 
 export function AgentProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<any>(null);
 
-  const userId = "mobile_user_01";
-  const scope = "shop:main";
-
+  // All state CRUD goes directly to /api/state — no channels, no interpreter
   const createState = async (ucode: string, title: string, payload: any) => {
     setLoading(true);
     try {
-      const res = await sendCommerceAction({
-        channel: "app_agent",
-        userId,
-        scope,
-        action: "CREATE",
-        data: { ucode, title, payload },
-      });
+      const res = await createStateApi(ucode, title, payload, SCOPE);
       setResult(res);
     } finally {
       setLoading(false);
@@ -48,13 +41,7 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
   const updateState = async (ucode: string, title: string, payload: any) => {
     setLoading(true);
     try {
-      const res = await sendCommerceAction({
-        channel: "app_agent",
-        userId,
-        scope,
-        action: "UPDATE",
-        data: { ucode, title, payload },
-      });
+      const res = await updateStateApi(ucode, title, payload, SCOPE);
       setResult(res);
     } finally {
       setLoading(false);
@@ -64,13 +51,7 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
   const deleteState = async (ucode: string) => {
     setLoading(true);
     try {
-      const res = await sendCommerceAction({
-        channel: "app_agent",
-        userId,
-        scope,
-        action: "DELETE",
-        data: { ucode },
-      });
+      const res = await deleteStateApi(ucode, SCOPE);
       setResult(res);
     } finally {
       setLoading(false);

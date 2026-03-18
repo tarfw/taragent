@@ -36,12 +36,15 @@ export class InterpreterAgent {
     console.log(`Available bindings: ${Object.keys(this.env || {}).join(", ")}`);
 
     let intentData: OpcodeResult;
+    // Track whether this came from a direct CRUD call or NL. 
+    // Only NL/operational intents should generate trace, instance and broadcast records.
+    const isDirectCrud = !!(req.action && req.data);
 
-    if (req.action && req.data) {
-      // Step 1: Structured CRUD path (App Interface)
-      intentData = await this.executeCrud(req.action, req.data, req.scope);
+    if (isDirectCrud) {
+      // Structured CRUD path (App Interface) — pure state management, no trace/instance/broadcast
+      intentData = await this.executeCrud(req.action!, req.data!, req.scope);
     } else if (req.text) {
-      // Step 1: Natural Language path (Chat Input)
+      // Natural Language path (Chat / Agent Input)
       const aiOutput = await this.extractIntentAi(req.text);
 
       // Step 2: Validate the AI output using Zod
@@ -55,24 +58,27 @@ export class InterpreterAgent {
         throw new Error("Invalid request: missing text or action");
     }
 
-    // Step 3: Write to trace ledger
-    await this.writeTrace(intentData, req);
+    // Steps 3–6 ONLY run for natural language / operational intents.
+    // Direct CRUD from the Memories screen does NOT produce traces, instances, or broadcasts.
+    if (!isDirectCrud) {
+      // Step 3: Write to trace ledger
+      await this.writeTrace(intentData, req);
 
-    // Step 4: Update the instance (working state)
-    // For READ we might skip instance update, but for CREATE/UPDATE it logs the event
-    if (req.action !== "READ") {
-        await this.updateInstance(intentData, req.scope);
-    }
+      // Step 4: Update the instance (working state)
+      if (req.action !== "READ") {
+          await this.updateInstance(intentData, req.scope);
+      }
 
-    // Step 5: Broadcast Live Events
-    const broadcastOpcodes = [101, 102, 103, 110];
-    if (broadcastOpcodes.includes(intentData.opcode)) {
-        await this.triggerLiveBroadcast(intentData, req.scope);
-    }
+      // Step 5: Broadcast Live Events
+      const broadcastOpcodes = [101, 102, 103, 110];
+      if (broadcastOpcodes.includes(intentData.opcode)) {
+          await this.triggerLiveBroadcast(intentData, req.scope);
+      }
 
-    // Step 6: If it's a scheduling task (301), trigger the Durable Object Alarm
-    if (intentData.opcode === 301) {
-        await this.triggerTaskDO(intentData, req.scope);
+      // Step 6: If it's a scheduling task (301), trigger the Durable Object Alarm
+      if (intentData.opcode === 301) {
+          await this.triggerTaskDO(intentData, req.scope);
+      }
     }
 
     return intentData;
