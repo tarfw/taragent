@@ -21,6 +21,9 @@ const MAPPING = {
   'waveform.path.ecg': 'show-chart',
   'cpu': 'memory',
   'link': 'link',
+  'circle': 'panorama-fish-eye',
+  'square': 'crop-square',
+  'asterisk': 'emergency',
 } as IconMapping;
 
 /**

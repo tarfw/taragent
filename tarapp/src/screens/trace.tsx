@@ -91,7 +91,7 @@ export default function LiveTracking() {
     <View style={styles.container}>
       <View style={styles.header}>
         <View style={styles.headerContent}>
-          <Text style={styles.title}>Live Feed</Text>
+          <Text style={styles.title}>Trace</Text>
           <View style={styles.statusBadge}>
             <Animated.View 
               style={[

@@ -1,0 +1,120 @@
+# Universal Commerce OS Implementation Plan
+
+This plan outlines the architecture and build order for the Universal Commerce OS, a scalable, event-driven system built on Cloudflare Workers, Durable Objects, and Turso DB. The focus is purely on backend API endpoints and background processing agents, with no frontend components.
+
+## Proposed Changes
+
+### [Database Setup (Turso)]
+
+#### [NEW] [schema.sql](file:///c:/tarfwk/taragent/schema.sql)
+
+SQL script to initialize the Turso database with the 3 core tables (`state`, `instance`, `trace`) and their respective indexes. This handles semantic memory, working state, and the event ledger.
+
+### [Core Project Configuration]
+
+#### [NEW] [wrangler.jsonc](file:///c:/tarfwk/taragent/wrangler.jsonc)
+
+Configuration for the Cloudflare environment, including bindings for Turso (environment variables for URL/Token), Durable Objects, and potentially Workers AI (for intent detection/embeddings).
+
+#### [NEW] [package.json](file:///c:/tarfwk/taragent/package.json)
+
+Project dependencies, including `@libsql/client` for Turso interaction, routing libraries like `hono` or `itty-router` for API endpoints, and `zod` for robust schema validation.
+
+### [Phase 1: Gateway & Core Agent]
+
+#### [NEW] [src/index.ts](file:///c:/tarfwk/taragent/src/index.ts)
+
+The main entry point. This will contain the **Gateway Worker** routing logic, listening on `/api/channel` for incoming requests from external channels (Telegram, App). Includes Zod validation for incoming request payloads.
+
+#### [NEW] [src/agents/interpreter.ts](file:///c:/tarfwk/taragent/src/agents/interpreter.ts)
+
+The **Interpreter Agent**. This is the core logic module responsible for:
+
+- Intent detection using AI (e.g., parsing "Sell 2 apples"), enforcing structured output using Zod schemas.
+- Mapping intent to the correct opcode (e.g., `102`).
+- **Hybrid Context**: Bypasses AI for exact data entry while maintaining full auditability via the `trace` ledger.
+- Resolving entities in the `state` table.
+- Writing to the `trace` ledger and updating the projected `instance` state in Turso with Zod-validated payloads.
+
+#### [NEW] [src/db/client.ts](file:///c:/tarfwk/taragent/src/db/client.ts)
+
+Helper module to initialize and manage the LibSQL/Turso database connection within the Cloudflare Worker environment.
+
+### [Phase 2: Durable Objects & Realtime]
+
+#### [NEW] [src/do/order.ts](file:///c:/tarfwk/taragent/src/do/order.ts)
+
+Durable Object class for handling Order state and WebSocket connections for realtime broadcasts (e.g., driver updates to customers).
+
+#### [NEW] [src/do/task.ts](file:///c:/tarfwk/taragent/src/do/task.ts)
+
+Durable Object class for the Scheduling System. Utilizes the Alarms API to trigger delayed actions or cron jobs (e.g., generating reports).
+
+### [Phase 3: Advanced Agents]
+
+#### [NEW] [src/agents/search.ts](file:///c:/tarfwk/taragent/src/agents/search.ts)
+
+The **Search Agent**. Handles semantic search against the `state.embedding` field in Turso for product lookups or CRM functionality.
+
+#### [NEW] [src/agents/analytics.ts](file:///c:/tarfwk/taragent/src/agents/analytics.ts)
+
+The **Analytics Agent**. Triggered by the Scheduler (Task DO) to read the `trace` ledger and generate aggregations or reports.
+
+### [Phase 5: Advanced State CRUD]
+
+#### [MODIFY] [src/index.ts](file:///c:/tarfwk/taragent/src/index.ts)
+
+Update the Gateway to accept structured actions (`CREATE`, `UPDATE`, `DELETE`, `READ`) in addition to natural language `text`.
+
+#### [MODIFY] [src/agents/interpreter.ts](file:///c:/tarfwk/taragent/src/agents/interpreter.ts)
+
+Enhance the **Interpreter Agent** to:
+
+- Bypass AI intent detection if a structured action is provided.
+- Support deep CRUD operations on the `state` table.
+- Validate structured payloads against Universal Commerce Protocol schemas (e.g., product, post).
+- Ensure atomic updates between `state` (long-term memory) and `instance` (current status).
+
+## Verification Plan
+
+### Manual Verification
+
+1.  **Database Initialization**: Run the [schema.sql](file:///c:/tarfwk/taragent/schema.sql) against a test Turso database and verify table creation.
+2.  **API Testing (curl/Postman)**:
+    - Send a POST request to the Gateway `/api/channel` simulating a user input: `{"text": "receive 5 widgets"}`.
+    - Verify the Interpreter Agent correctly parses this.
+    - Check the Turso database to confirm a `trace` record (opcode ~101) was created and the `instance` table was updated with the quantity.
+3.  **Realtime Testing**: Connect to the Order Durable Object via a WebSocket client and verify message broadcasting.
+4.  **Scheduler Testing**: Schedule a short-duration task and verify that the Analytics Agent executes and logs the expected output.
+
+### [Phase 7: Realtime Live Tracking]
+
+#### [MODIFY] [src/index.ts](file:///c:/tarfwk/taragent/src/index.ts)
+
+Add a new WebSocket route `/api/live/:scope` to the Gateway. This route will upgrade the connection and pass it to the [OrderDO](file:///c:/tarfwk/taragent/src/do/order.ts#3-52) for the given scope, handling the WebSocket lifecycle.
+
+#### [MODIFY] [src/agents/interpreter.ts](file:///c:/tarfwk/taragent/src/agents/interpreter.ts)
+
+Update the Interpreter Agent. When a `102` (Stock OUT / Sale) or `103` opcode occurs, trigger a [fetch](file:///c:/tarfwk/taragent/src/do/stubs.ts#11-15) to the [OrderDO](file:///c:/tarfwk/taragent/src/do/order.ts#3-52) to broadcast the live event payload to all connected WebSocket clients.
+
+#### [MODIFY] [tarapp/app/(tabs)/\_layout.tsx](<file:///c:/tarfwk/taragent/tarapp/app/(tabs)/_layout.tsx>)
+
+Add a new tab for "Live Tracking".
+
+#### [NEW] [tarapp/src/screens/LiveTracking.tsx](file:///c:/tarfwk/taragent/tarapp/src/screens/LiveTracking.tsx)
+
+Build a new React Native screen that opens a WebSocket connection to `wss://taragent.wetarteam.workers.dev/api/live/shop:main`. It will listen for JSON messages and render live sales/stock updates in real-time without polling.
+
+### [Phase 8: Semantic Search]
+
+#### [MODIFY] [src/agents/interpreter.ts](file:///c:/tarfwk/taragent/src/agents/interpreter.ts)
+
+When `CREATE` or `UPDATE` is called for a product, use `env.AI` (`@cf/baai/bge-base-en-v1.5`) to generate a text embedding from the product's title and description. Store this vector directly into the `embedding` BLOB column of the Turso `state` table during the database insert/update.
+
+#### [NEW] [src/agents/search.ts](file:///c:/tarfwk/taragent/src/agents/search.ts)
+
+Build the **Search Agent**. When a user types a natural language query ("find me a nice blue running shoe") into the UI, generate an AI embedding for that query. Then, run a similarity search directly against Turso using its native vector search capabilities (e.g., `vector_distance_cos`), returning the top matching records from the `state` table.
+
+#### [MODIFY] [tarapp/src/screens/AgentsScreen.tsx](file:///c:/tarfwk/taragent/tarapp/src/screens/AgentsScreen.tsx)
+
+Update the Agents UI to support a dedicated "Search" mode that hits the new Search Agent endpoint, displaying the semantically matched products natively from Turso.

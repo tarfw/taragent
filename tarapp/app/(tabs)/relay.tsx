@@ -1,6 +1,6 @@
 import { StyleSheet } from 'react-native';
 import { ThemedView } from '@/components/themed-view';
-import RelayScreen from '../../src/screens/RelayScreen';
+import Relay from '../../src/screens/relay';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function RelayTab() {
@@ -8,7 +8,7 @@ export default function RelayTab() {
   
   return (
     <ThemedView style={[styles.container, { paddingTop: insets.top }]}>
-      <RelayScreen />
+      <Relay />
     </ThemedView>
   );
 }

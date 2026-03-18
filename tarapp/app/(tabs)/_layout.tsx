@@ -16,26 +16,27 @@ export default function TabLayout() {
         headerShown: false,
         tabBarButton: HapticTab,
         tabBarLabelStyle: { fontWeight: '600' },
+        tabBarShowLabel: false,
       }}>
       <Tabs.Screen
         name="index"
         options={{
           title: 'Trace',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="waveform.path.ecg" color={color} />,
+          tabBarIcon: ({ color }) => <IconSymbol size={28} name="circle" color={color} />,
         }}
       />
       <Tabs.Screen
         name="agents"
         options={{
           title: 'Agents',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="cpu" color={color} />,
+          tabBarIcon: ({ color }) => <IconSymbol size={28} name="square" color={color} />,
         }}
       />
       <Tabs.Screen
         name="relay"
         options={{
           title: 'Relay',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="link" color={color} />,
+          tabBarIcon: ({ color }) => <IconSymbol size={28} name="asterisk" color={color} />,
         }}
       />
     </Tabs>
