@@ -3,45 +3,82 @@ import { View, Text, StyleSheet, ScrollView, Animated } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useLiveEvents } from '@/hooks/useLiveEvents';
 
+// ─── Full TAR Opcode map for Trace screen ─────────────────────────────────
+
+const OPCODE_META: Record<number, { name: string; color: string; icon: string }> = {
+  101: { name: 'STOCKIN',        color: '#34C759', icon: 'arrow-down-circle' },
+  102: { name: 'SALEOUT',        color: '#FF3B30', icon: 'arrow-up-circle' },
+  103: { name: 'SALERETURN',     color: '#FF9500', icon: 'return-down-back' },
+  104: { name: 'STOCKADJUST',    color: '#5856D6', icon: 'git-compare' },
+  105: { name: 'TRANSFEROUT',    color: '#AF52DE', icon: 'arrow-forward-circle' },
+  106: { name: 'TRANSFERIN',     color: '#007AFF', icon: 'arrow-back-circle' },
+  107: { name: 'STOCKVOID',      color: '#8E8E93', icon: 'close-circle' },
+  201: { name: 'INVOICECREATE',  color: '#007AFF', icon: 'document-text' },
+  202: { name: 'ITEMADD',        color: '#007AFF', icon: 'add-circle' },
+  203: { name: 'INVOICEPAYMENT', color: '#34C759', icon: 'cash' },
+  204: { name: 'PAYMENTFAIL',    color: '#FF3B30', icon: 'close-circle' },
+  205: { name: 'INVOICEVOID',    color: '#8E8E93', icon: 'trash' },
+  206: { name: 'ITEMDEFINE',     color: '#007AFF', icon: 'list-circle' },
+  207: { name: 'INVOICEREFUND',  color: '#FF9500', icon: 'refresh-circle' },
+  301: { name: 'TASKCREATE',     color: '#5856D6', icon: 'checkbox' },
+  302: { name: 'TASKASSIGN',     color: '#5856D6', icon: 'person' },
+  303: { name: 'TASKSTART',      color: '#007AFF', icon: 'play-circle' },
+  304: { name: 'TASKPROGRESS',   color: '#FF9500', icon: 'time' },
+  305: { name: 'TASKDONE',       color: '#34C759', icon: 'checkmark-circle' },
+  306: { name: 'TASKFAIL',       color: '#FF3B30', icon: 'close-circle' },
+  307: { name: 'TASKBLOCK',      color: '#FF9500', icon: 'pause-circle' },
+  308: { name: 'TASKRESUME',     color: '#007AFF', icon: 'play-skip-forward' },
+  309: { name: 'TASKVOID',       color: '#8E8E93', icon: 'close' },
+  310: { name: 'TASKLINK',       color: '#5856D6', icon: 'link' },
+  311: { name: 'TASKCOMMENT',    color: '#007AFF', icon: 'chatbubble' },
+  401: { name: 'PAYIN',          color: '#34C759', icon: 'trending-up' },
+  402: { name: 'PAYOUT',         color: '#FF3B30', icon: 'trending-down' },
+  403: { name: 'ACCOUNTREFUND',  color: '#FF9500', icon: 'refresh' },
+  404: { name: 'ACCOUNTADJUST',  color: '#5856D6', icon: 'calculator' },
+  501: { name: 'ORDERCREATE',    color: '#007AFF', icon: 'cart' },
+  502: { name: 'ORDERSHIP',      color: '#5856D6', icon: 'airplane' },
+  503: { name: 'ORDERDELIVER',   color: '#34C759', icon: 'checkmark-done' },
+  504: { name: 'ORDERCANCEL',    color: '#FF3B30', icon: 'close-circle' },
+  601: { name: 'RIDECREATE',     color: '#007AFF', icon: 'car' },
+  602: { name: 'RIDESTART',      color: '#34C759', icon: 'car-sport' },
+  603: { name: 'RIDEDONE',       color: '#34C759', icon: 'flag' },
+  604: { name: 'RIDECANCEL',     color: '#FF3B30', icon: 'close-circle' },
+  605: { name: 'MOTION',         color: '#FF9500', icon: 'location' },
+  611: { name: 'BOOKINGCREATE',  color: '#5856D6', icon: 'calendar' },
+  612: { name: 'BOOKINGDONE',    color: '#34C759', icon: 'calendar-outline' },
+  621: { name: 'RENTALSTART',    color: '#007AFF', icon: 'key' },
+  622: { name: 'RENTALEND',      color: '#8E8E93', icon: 'lock-closed' },
+  701: { name: 'GSTACCRUE',      color: '#FF9500', icon: 'receipt' },
+  702: { name: 'GSTPAY',         color: '#FF3B30', icon: 'business' },
+  703: { name: 'GSTREFUND',      color: '#34C759', icon: 'cash-outline' },
+  801: { name: 'MEMORYDEFINE',   color: '#5856D6', icon: 'library' },
+  802: { name: 'MEMORYWRITE',    color: '#5856D6', icon: 'save' },
+  901: { name: 'USERCREATE',     color: '#007AFF', icon: 'person-add' },
+  902: { name: 'ROLEGRANT',      color: '#5856D6', icon: 'shield-checkmark' },
+};
+
+function getMeta(opcode: number) {
+  return OPCODE_META[opcode] ?? { name: `OPCODE_${opcode}`, color: '#8E8E93', icon: 'flash' };
+}
+
+// ─── Screen ───────────────────────────────────────────────────────────────
+
 export default function LiveTracking() {
   const { events, status } = useLiveEvents();
-
-  // Animation value for the pulsing live dot
   const pulseAnim = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
-    startPulse();
-  }, []);
-
-  const startPulse = () => {
     Animated.loop(
       Animated.sequence([
-        Animated.timing(pulseAnim, { toValue: 0.4, duration: 800, useNativeDriver: true }),
-        Animated.timing(pulseAnim, { toValue: 1, duration: 800, useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 0.3, duration: 900, useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 1, duration: 900, useNativeDriver: true }),
       ])
     ).start();
-  };
-
-  const renderIconForOpcode = (opcode: number) => {
-    switch (opcode) {
-      case 102: return <Ionicons name="cart" size={24} color="#FF3B30" />;
-      case 103: return <Ionicons name="bicycle" size={24} color="#007AFF" />;
-      case 101: return <Ionicons name="download" size={24} color="#34C759" />;
-      default: return <Ionicons name="flash" size={24} color="#FF9500" />;
-    }
-  };
-
-  const renderTextForOpcode = (opcode: number) => {
-    switch (opcode) {
-      case 102: return 'STOCK OUT (SALE)';
-      case 103: return 'DRIVER UPDATE';
-      case 101: return 'STOCK IN';
-      default: return `OPCODE ${opcode}`;
-    }
-  };
+  }, []);
 
   return (
     <View style={styles.container}>
+      {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerContent}>
           <Text style={styles.title}>Trace</Text>
@@ -58,42 +95,41 @@ export default function LiveTracking() {
             <Text style={styles.statusText}>{status}</Text>
           </View>
         </View>
-        <Text style={styles.subtitle}>Real-time commerce events from Cloudflare</Text>
+        <Text style={styles.subtitle}>Real-time TAR event stream</Text>
       </View>
 
       <ScrollView contentContainerStyle={styles.list}>
         {events.length === 0 ? (
           <View style={styles.emptyContainer}>
-            <Ionicons name="radio-outline" size={64} color="#C7C7CC" />
-            <Text style={styles.emptyText}>Waiting for live events...</Text>
+            <Text style={styles.emptyText}>Waiting for events…</Text>
             <Text style={styles.emptySubText}>
-              Activity from your commerce agent will appear here instantly.
+              Commerce, orders and tasks will appear here live.
             </Text>
           </View>
         ) : (
-          events.map((ev, index) => (
-            <View key={index} style={styles.card}>
-              <View style={styles.cardIconBox}>{renderIconForOpcode(ev.opcode)}</View>
-              <View style={styles.cardContent}>
-                <View style={styles.cardHeader}>
-                  <Text style={styles.streamId}>{ev.streamid}</Text>
-                  <Text style={styles.time}>{ev.timestamp}</Text>
+          events.map((ev, index) => {
+            const meta = getMeta(ev.opcode);
+            return (
+              <View key={index} style={styles.flatRow}>
+                <View style={styles.flatCol}>
+                  <Text style={[styles.flatOpName, { color: meta.color }]}>{meta.name}</Text>
+                  <Text style={styles.flatStreamId}>{ev.streamid}</Text>
                 </View>
-                <View style={styles.cardBody}>
-                  <Text style={styles.opcodeText}>{renderTextForOpcode(ev.opcode)}</Text>
+                <View style={styles.flatRight}>
+                  <Text style={styles.flatTime}>{ev.timestamp}</Text>
                   <Text
                     style={[
-                      styles.delta,
+                      styles.flatDelta,
                       { color: ev.delta < 0 ? '#FF3B30' : ev.delta > 0 ? '#34C759' : '#8E8E93' },
                     ]}
                   >
                     {ev.delta > 0 ? '+' : ''}
-                    {ev.delta} units
+                    {ev.delta !== 0 ? `${ev.delta}` : '—'}
                   </Text>
                 </View>
               </View>
-            </View>
-          ))
+            );
+          })
         )}
       </ScrollView>
     </View>
@@ -109,21 +145,15 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
     borderBottomColor: '#E5E5EA',
-    zIndex: 10,
   },
   headerContent: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 6,
+    marginBottom: 4,
   },
-  title: {
-    fontSize: 28,
-    fontWeight: '800',
-    color: '#1C1C1E',
-    letterSpacing: -0.5,
-  },
-  subtitle: { fontSize: 14, color: '#8E8E93' },
+  title: { fontSize: 28, fontWeight: '800', color: '#1C1C1E', letterSpacing: -0.5 },
+  subtitle: { fontSize: 13, color: '#8E8E93' },
   statusBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -132,70 +162,26 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
     borderRadius: 20,
   },
-  statusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginRight: 6,
-  },
+  statusDot: { width: 8, height: 8, borderRadius: 4, marginRight: 6 },
   statusText: { fontSize: 12, fontWeight: '600', color: '#3A3A3C' },
-  list: { padding: 16, flexGrow: 1 },
-  emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 60,
-  },
-  emptyText: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#8E8E93',
-    marginTop: 16,
-  },
-  emptySubText: {
-    fontSize: 14,
-    color: '#C7C7CC',
-    marginTop: 8,
-    textAlign: 'center',
-    paddingHorizontal: 40,
-  },
-  card: {
+  list: { paddingHorizontal: 20, paddingVertical: 10, flexGrow: 1 },
+  emptyContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', marginTop: 100 },
+  emptyText: { fontSize: 16, fontWeight: '700', color: '#1C1C1E' },
+  emptySubText: { fontSize: 13, color: '#8E8E93', marginTop: 4, textAlign: 'center' },
+  
+  // Flat Row Styles
+  flatRow: {
     flexDirection: 'row',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#E5E5EA',
     alignItems: 'center',
-  },
-  cardIconBox: {
-    width: 50,
-    height: 50,
-    borderRadius: 12,
-    backgroundColor: '#F2F2F7',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 16,
-  },
-  cardContent: { flex: 1 },
-  cardHeader: {
-    flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 4,
+    paddingVertical: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#E5E5EA',
   },
-  streamId: { fontWeight: '700', fontSize: 16, color: '#1C1C1E' },
-  time: { fontSize: 12, color: '#8E8E93', fontWeight: '500' },
-  cardBody: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  opcodeText: {
-    fontSize: 13,
-    color: '#8E8E93',
-    fontWeight: '600',
-    letterSpacing: 0.5,
-  },
-  delta: { fontSize: 16, fontWeight: '800' },
+  flatCol: { flex: 1 },
+  flatOpName: { fontSize: 11, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.5 },
+  flatStreamId: { fontSize: 15, fontWeight: '600', color: '#1C1C1E', marginTop: 2 },
+  flatRight: { alignItems: 'flex-end' },
+  flatTime: { fontSize: 11, color: '#AEAEB2', marginBottom: 2 },
+  flatDelta: { fontSize: 15, fontWeight: '800' },
 });

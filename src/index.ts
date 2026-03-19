@@ -167,11 +167,11 @@ app.post('/api/channel', async (c) => {
     const requestData = parsedData.data;
     const db = getDbClient(c.env.TURSO_DB_URL, c.env.TURSO_DB_TOKEN);
     
-    // Route to Search Agent
-    if (requestData.action === "SEARCH" && requestData.text) {
+    // Route to Search Agent if explicitly requested or if text starts with "search"
+    if ((requestData.action === "SEARCH" || requestData.text?.toLowerCase().startsWith('search')) && requestData.text) {
       const searchAgent = new SearchAgent(db, c.env);
       const result = await searchAgent.processSearch(requestData.text, requestData.scope || "shop:main");
-      return c.json({ success: true, result });
+      return c.json({ success: true, result: { ...result, action: 'SEARCH' } });
     }
 
     // Natural language → interpreter pipeline (trace + instance + broadcast)

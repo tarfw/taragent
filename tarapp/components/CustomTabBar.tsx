@@ -36,7 +36,6 @@ export function CustomTabBar({ state, descriptors, navigation }: BottomTabBarPro
           channel: 'app_agent',
           userId: 'mobile_user_01',
           scope: 'shop:main',
-          action: 'SEARCH',
           text: query,
         }),
       });

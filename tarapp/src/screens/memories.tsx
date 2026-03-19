@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,8 @@ import {
   TouchableOpacity,
   Alert,
   ActivityIndicator,
+  RefreshControl,
+  TextInput,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAgentState } from '@/hooks/useAgentState';
@@ -15,15 +17,25 @@ import { StateFormModal } from '@/components/StateFormModal';
 import { STATE_TYPES, StateTypeDef, getStateType } from '../config/stateSchemas';
 
 export default function MemoriesScreen() {
-  const { loading, result, createState, updateState, deleteState, setResult } = useAgentState();
+  const { loading, result, createState, updateState, deleteState, loadStates, search } = useAgentState();
+
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isSemanticSearch, setIsSemanticSearch] = useState(false);
 
   const [showTypePicker, setShowTypePicker] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [selectedType, setSelectedType] = useState<StateTypeDef | null>(null);
   const [editingState, setEditingState] = useState<any>(null);
   const [activeTypeFilter, setActiveTypeFilter] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
 
   // --- CRUD Handlers ---
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await loadStates();
+    setRefreshing(false);
+  }, [loadStates]);
+
   const handlePressAdd = () => {
     setEditingState(null);
     setShowTypePicker(true);
@@ -69,6 +81,30 @@ export default function MemoriesScreen() {
     }
   };
 
+  const handleSearch = async (text: string) => {
+    setSearchQuery(text);
+    if (!text) {
+      loadStates();
+      return;
+    }
+    if (isSemanticSearch) {
+      // Trigger semantic search
+      search(text);
+    }
+  };
+
+  const toggleSearchMode = () => {
+    const nextMode = !isSemanticSearch;
+    setIsSemanticSearch(nextMode);
+    if (searchQuery) {
+      if (nextMode) {
+        search(searchQuery);
+      } else {
+        // Keyword filter happens automatically via filteredItems
+      }
+    }
+  };
+
   // --- Derive items list ---
   let items: any[] = [];
   if (result?.result?.action === 'SEARCH' && Array.isArray(result.result.results)) {
@@ -79,9 +115,15 @@ export default function MemoriesScreen() {
     items = [result.result];
   }
 
-  const filteredItems = activeTypeFilter
-    ? items.filter((item) => (item.ucode || item.streamid)?.startsWith(activeTypeFilter + ':'))
-    : items;
+  const filteredItems = isSemanticSearch
+    ? items // In semantic mode, 'items' are already filtered by the 'search' hook results
+    : items.filter((item) => {
+        const matchesType = !activeTypeFilter || (item.ucode || item.streamid)?.startsWith(activeTypeFilter + ':');
+        const matchesQuery = !searchQuery || 
+          item.title?.toLowerCase().includes(searchQuery.toLowerCase()) || 
+          item.ucode?.toLowerCase().includes(searchQuery.toLowerCase());
+        return matchesType && matchesQuery;
+      });
 
   // --- Render ---
   const renderEmpty = () => (
@@ -204,8 +246,39 @@ export default function MemoriesScreen() {
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Memories</Text>
-        <TouchableOpacity style={styles.addBtn} onPress={handlePressAdd}>
-          <Ionicons name="add" size={24} color="#000" />
+        <View style={{ flexDirection: 'row', gap: 12 }}>
+          <TouchableOpacity style={styles.addBtn} onPress={onRefresh}>
+            <Ionicons name="sync" size={20} color="#000" />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.addBtn} onPress={handlePressAdd}>
+            <Ionicons name="add" size={24} color="#000" />
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* Search Bar */}
+      <View style={styles.searchContainer}>
+        <View style={styles.searchInputWrapper}>
+          <Ionicons name="search" size={18} color="#8E8E93" style={{ marginLeft: 12 }} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder={isSemanticSearch ? "Search by meaning..." : "Search memories..."}
+            value={searchQuery}
+            onChangeText={handleSearch}
+            placeholderTextColor="#8E8E93"
+          />
+          {searchQuery ? (
+            <TouchableOpacity onPress={() => handleSearch('')} style={{ padding: 8 }}>
+              <Ionicons name="close-circle" size={18} color="#C7C7CC" />
+            </TouchableOpacity>
+          ) : null}
+        </View>
+        <TouchableOpacity 
+          style={[styles.aiToggle, isSemanticSearch && styles.aiToggleActive]} 
+          onPress={toggleSearchMode}
+        >
+          <Ionicons name="sparkles" size={16} color={isSemanticSearch ? "#FFF" : "#007AFF"} />
+          <Text style={[styles.aiToggleText, isSemanticSearch && styles.aiToggleTextActive]}>AI</Text>
         </TouchableOpacity>
       </View>
 
@@ -216,15 +289,18 @@ export default function MemoriesScreen() {
       <ScrollView
         contentContainerStyle={[styles.scrollContent, filteredItems.length === 0 && { flex: 1 }]}
         keyboardShouldPersistTaps="handled"
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
       >
-        {loading && (
+        {loading && !refreshing && (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="small" color="#000" />
             <Text style={styles.loadingText}>Working…</Text>
           </View>
         )}
 
-        {!loading && filteredItems.length === 0 && renderEmpty()}
+        {(!loading || refreshing) && filteredItems.length === 0 && renderEmpty()}
 
         {filteredItems.length > 0 && (
           <View style={styles.list}>
@@ -279,6 +355,51 @@ const styles = StyleSheet.create({
     backgroundColor: '#F2F2F7',
     justifyContent: 'center',
     alignItems: 'center',
+  },
+
+  searchContainer: {
+    paddingHorizontal: 20,
+    paddingBottom: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  searchInputWrapper: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F2F2F7',
+    borderRadius: 12,
+    height: 44,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 16,
+    color: '#1C1C1E',
+    paddingHorizontal: 8,
+  },
+  aiToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 12,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: '#007AFF10',
+    borderWidth: 1,
+    borderColor: '#007AFF30',
+  },
+  aiToggleActive: {
+    backgroundColor: '#007AFF',
+    borderColor: '#007AFF',
+  },
+  aiToggleText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#007AFF',
+  },
+  aiToggleTextActive: {
+    color: '#FFF',
   },
 
   filterScroll: { maxHeight: 48 },
